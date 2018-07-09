@@ -269,10 +269,6 @@ class WC_Shiptor_Connect {
 	
 	public function get_shipping() {
 		$shipping = array();
-
-        /*if ( ! $this->is_available() ) {
-                    return $shipping;
-        }*/
 		
 		$params = apply_filters( 'woocommerce_shiptor_shipping_params', array(
 			'height'		=> $this->get_height(),
@@ -280,7 +276,6 @@ class WC_Shiptor_Connect {
 			'length'		=> $this->get_length(),
 			'weight'		=> $this->get_weight(),
 			'kladr_id'		=> $this->get_kladr_id()
-			/*'courier'		=> $this->service*/
 		), $this->id, $this->instance_id, $this->package );
 		
 		if( ! empty( $this->country_code ) ) {
