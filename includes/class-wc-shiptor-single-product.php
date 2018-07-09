@@ -102,6 +102,7 @@ class WC_Shiptor_Single_Product {
 		$connect->set_package( $package );
 
         $shipping = $connect->get_shipping();
+        var_dump($shipping);
 
         $enabled_shippings = array_filter($shipping, function($item) use ($new_arr) {
             if(in_array( $item['method']['courier'], $new_arr )){
