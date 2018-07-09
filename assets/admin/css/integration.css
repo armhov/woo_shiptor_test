@@ -1,0 +1,5 @@
+input[required="required"]:invalid {
+	border-color:#ca4a1f;
+}
+
+
