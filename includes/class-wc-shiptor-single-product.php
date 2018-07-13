@@ -68,64 +68,116 @@ class WC_Shiptor_Single_Product {
 			'product'	=> $product
 		), '', WC_Shiptor::get_templates_path() );
 	}
-	
-	private function get_shipping( $product_id ) {
-		$methods = array();
-		$product = wc_get_product( $product_id );
-		
-		$package['contents'][]	= array(
-			'data'		=> $product,
-			'quantity'	=> 1
-		);
 
-        global $wpdb;
-        $is_enabled_methods = array();
-        $result = $wpdb->get_results("SELECT method_id, is_enabled FROM wp_woocommerce_shipping_zone_methods ");
-        if( !empty( $result ) && is_array( $result ) ){
-            foreach($result as $row) {
-                if($row->is_enabled == 1){
-                    $is_enabled_methods[] = $row->method_id;
-                }
-            }
-        }
+    private function get_shipping( $product_id ) {
+        $methods = array();
+        $product = wc_get_product( $product_id );
 
-        $new_arr = array();
-        $count = count($is_enabled_methods);
+        $package['contents'][]	= array(
+            'data'		=> $product,
+            'quantity'	=> 1
+        );
 
-        for($i = 0; $i < $count; $i ++){
-            $new_arr[] = substr($is_enabled_methods[$i], 8);
-        }
+        $is_enabled_methods = get_enabled_methods();
+        $enabled_method_names = substring_enabled_methods($is_enabled_methods);
 
-		$connect = new WC_Shiptor_Connect( 'calculate_product' );
-		$connect->set_kladr_id( wc_shiptor_get_customer_kladr() );
-		$connect->set_country_code( WC()->customer->get_billing_country() );
-		$connect->set_package( $package );
+        $connect = new WC_Shiptor_Connect( 'calculate_product' );
+        $connect->set_kladr_id( wc_shiptor_get_customer_kladr() );
+        $connect->set_country_code( WC()->customer->get_billing_country() );
+        $connect->set_package( $package );
 
         $shipping = $connect->get_shipping();
 
-        $enabled_shippings = array_filter($shipping, function($item) use ($new_arr) {
-            if(in_array( $item['method']['courier'], $new_arr )){
-               return $item;
+        $enabled_shippings = array_filter($shipping, function($item) use ($enabled_method_names) {
+            if(in_array( $item['method']['courier'], $enabled_method_names )){
+                return $item;
             }
         });
 
-		foreach($enabled_shippings as $service ) {
-			
-			if( ! empty( $service ) && is_array( $service ) ) {
+        $simplified_shipping_method = array();
+        foreach($enabled_shippings as $item) {
+            $simplified_shipping_method[] = array(
+                'status'    => $item['status'],
+                'method_id' => $item['method']['id'],
+                'name'      => $item['method']['name'],
+                'total'     => $item['cost']['total']['sum'],
+                'currency'  => $item['cost']['total']['currency'],
+                'readable'  => $item['cost']['total']['readable'],
+                'days'      => $item['days']
+            );
+        };
+
+        $settings = array();
+        $settings_part = array();
+        foreach($is_enabled_methods as $key => $val){
+
+            if(!empty( $val["method_id"] && $val["instance_id"])){
+                if( get_option( 'woocommerce_'.$val["method_id"].'_'.$val["instance_id"].'_settings' )){
+
+                    $settings[] = get_option('woocommerce_'.$val["method_id"].'_'.$val["instance_id"].'_settings');
+
+                    if( ($settings[$key]['fee'] == 0 && $settings[$key]['fix_cost'] == 0) && !empty($simplified_shipping_method) ){
+                        $settings_part[] = array(
+                            'fee'       => $settings[$key]['fee'],
+                            'title'     => $settings[$key]['title'],
+                            'fix_cost'  => $settings[$key]['fix_cost'],
+                        );
+                    }
+
+                    if( $settings[$key]['fee'] > 0 && $settings[$key]['fix_cost'] == 0 ){
+                        $settings_part[] = array(
+                            'fee'       => $settings[$key]['fee'],
+                            'title'     => $settings[$key]['title']
+                        );
+                    }
+
+                    if( $settings[$key]['fix_cost'] > 0 ){
+                        $settings_part[] = array(
+                            'fix_cost'  => $settings[$key]['fix_cost'],
+                            'title'     => $settings[$key]['title']
+                        );
+                    }
+
+                }
+            }
+        }
+
+        $final_shippings_result = array();
+        for( $p = 0; $p < count($simplified_shipping_method); $p ++ ){
+            for( $l = 0; $l < count($settings_part); $l++ ){
+                if( strpos( strtolower($simplified_shipping_method[$p]['name']), strtolower($settings_part[$l]['title'])) !== false ){
+                    $final_shippings_result[] = array_merge($simplified_shipping_method[$p], $settings_part[$l]);
+                }
+            }
+        }
+
+        foreach( $final_shippings_result as $service ) {
+            if( ! empty( $service ) && is_array( $service ) ) {
+
                 if( 'ok' !== $service['status'] ) {
                     continue;
                 }
+
+                if( isset($service['fix_cost']) && $service['fix_cost'] !=0 ){
+                    $price = $service['fix_cost'];
+                }elseif ( isset($service['fee']) && $service['fee'] !=0 ){
+                    $price = $service['fee'] + $service['total'];
+                }else{
+                    $price = $service['total'];
+                }
+
                 $methods[] = array(
-                    'term_id'	=> $service['method']['id'],
-                    'name'		=> $service['method']['name'],
+                    'term_id'	=> $service['method_id'],
+                    'name'		=> $service['name'],
                     'price'		=> floor( $service['cost']['total']['sum'] ),
-                    'cost'		=> sprintf( __( 'From: %s', 'woocommerce-shiptor' ), $service['cost']['total']['readable'] ),
+                    'cost'		=> sprintf( __( 'From: %s %s', 'woocommerce-shiptor' ), $price, 'руб.' ),
                     'days'		=> $service['days']
                 );
-			}
-		}
-		return $methods;
-	}
+            }
+        }
+
+        return $methods;
+    }
 	
 	public function get_methods() {
 		if ( ! isset( $_POST['security'], $_POST['params'], $_POST['post_id'] ) ) {
