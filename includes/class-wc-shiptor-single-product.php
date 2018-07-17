@@ -71,8 +71,8 @@ class WC_Shiptor_Single_Product {
 
     private function get_shipping( $product_id ) {
         $methods = array();
-        $product = wc_get_product( $product_id );
 
+        $product = wc_get_product( $product_id );
         $package['contents'][]	= array(
             'data'		=> $product,
             'quantity'	=> 1
@@ -108,56 +108,39 @@ class WC_Shiptor_Single_Product {
         };
 
         $settings = array();
-        $settings_part = array();
-        foreach($is_enabled_methods as $key => $val){
+        foreach($is_enabled_methods as $val){
+            if( get_option( 'woocommerce_'.$val["method_id"].'_'.$val["instance_id"].'_settings' )){
+                $settings[] = get_option('woocommerce_'.$val["method_id"].'_'.$val["instance_id"].'_settings');
+            }
+        }
 
-            if(!empty( $val["method_id"] && $val["instance_id"])){
-                if( get_option( 'woocommerce_'.$val["method_id"].'_'.$val["instance_id"].'_settings' )){
-
-                    $settings[] = get_option('woocommerce_'.$val["method_id"].'_'.$val["instance_id"].'_settings');
-
-                    if( ($settings[$key]['fee'] == 0 && $settings[$key]['fix_cost'] == 0) && !empty($simplified_shipping_method) ){
-                        $settings_part[] = array(
-                            'fee'       => $settings[$key]['fee'],
-                            'title'     => $settings[$key]['title'],
-                            'fix_cost'  => $settings[$key]['fix_cost'],
+        $ship_count = count($simplified_shipping_method);
+        $set_count = count($settings);
+        if(!empty($settings)){
+            for( $i = 0; $i < $ship_count; $i++ ){
+                for( $l = 0; $l < $set_count; $l++ ){
+                    if( strpos( strtolower($simplified_shipping_method[$i]['name']), strtolower($settings[$l]['title'])) !== false ){
+                        $simplified_shipping_method[$i] = array(
+                            "fix_cost"   => $settings[$l]['fix_cost'],
+                            "fee"        => $settings[$l]['fee'],
+                            'status'     => $simplified_shipping_method[$i]['status'],
+                            'method_id'  => $simplified_shipping_method[$i]['method_id'],
+                            'name'       => $simplified_shipping_method[$i]['name'],
+                            'total'      => $simplified_shipping_method[$i]['total'],
+                            'currency'   => $simplified_shipping_method[$i]['currency'],
+                            'readable'   => $simplified_shipping_method[$i]['readable'],
+                            'days'       => $simplified_shipping_method[$i]['days']
                         );
                     }
-
-                    if( $settings[$key]['fee'] > 0 && $settings[$key]['fix_cost'] == 0 ){
-                        $settings_part[] = array(
-                            'fee'       => $settings[$key]['fee'],
-                            'title'     => $settings[$key]['title']
-                        );
-                    }
-
-                    if( $settings[$key]['fix_cost'] > 0 ){
-                        $settings_part[] = array(
-                            'fix_cost'  => $settings[$key]['fix_cost'],
-                            'title'     => $settings[$key]['title']
-                        );
-                    }
-
                 }
             }
         }
 
-        $final_shippings_result = array();
-        for( $p = 0; $p < count($simplified_shipping_method); $p ++ ){
-            for( $l = 0; $l < count($settings_part); $l++ ){
-                if( strpos( strtolower($simplified_shipping_method[$p]['name']), strtolower($settings_part[$l]['title'])) !== false ){
-                    $final_shippings_result[] = array_merge($simplified_shipping_method[$p], $settings_part[$l]);
-                }
-            }
-        }
-
-        foreach( $final_shippings_result as $service ) {
+        foreach( $simplified_shipping_method as $service ) {
             if( ! empty( $service ) && is_array( $service ) ) {
-
                 if( 'ok' !== $service['status'] ) {
                     continue;
                 }
-
                 if( isset($service['fix_cost']) && $service['fix_cost'] !=0 ){
                     $price = $service['fix_cost'];
                 }elseif ( isset($service['fee']) && $service['fee'] !=0 ){
@@ -165,17 +148,15 @@ class WC_Shiptor_Single_Product {
                 }else{
                     $price = $service['total'];
                 }
-
                 $methods[] = array(
                     'term_id'	=> $service['method_id'],
                     'name'		=> $service['name'],
-                    'price'		=> floor( $service['cost']['total']['sum'] ),
+                    /* 'price'		=> floor( $service['cost']['total']['sum'] ),*/
                     'cost'		=> sprintf( __( 'From: %s %s', 'woocommerce-shiptor' ), $price, 'руб.' ),
                     'days'		=> $service['days']
                 );
             }
         }
-
         return $methods;
     }
 	
